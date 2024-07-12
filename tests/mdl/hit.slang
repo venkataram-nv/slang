@@ -26,9 +26,43 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *****************************************************************************/
 
+import types;
+import material;
+import buffers;
+import common;
+import runtime;
+
 #if !defined(TARGET_CODE_ID)
     #define TARGET_CODE_ID 0
 #endif
+
+#define MDL_MATERIAL_REGISTER_SPACE space3
+#define MDL_MATERIAL_ARGUMENT_BLOCK_SLOT t1
+#define MDL_MATERIAL_TEXTURE_INFO_SLOT t2
+#define MDL_MATERIAL_LIGHT_PROFILE_INFO_SLOT t3
+#define MDL_MATERIAL_MBSDF_INFO_SLOT t4
+
+#define MDL_MATERIAL_TEXTURE_2D_REGISTER_SPACE space4
+#define MDL_MATERIAL_TEXTURE_3D_REGISTER_SPACE space5
+#define MDL_MATERIAL_TEXTURE_SLOT_BEGIN t0
+
+#define MDL_MATERIAL_BUFFER_REGISTER_SPACE space6
+#define MDL_MATERIAL_BUFFER_SLOT_BEGIN t0
+
+#define MDL_HAS_INIT 1
+#define MDL_HAS_SURFACE_SCATTERING 1
+#define MDL_HAS_SURFACE_EMISSION 0
+#define MDL_HAS_BACKFACE_SCATTERING 0
+#define MDL_HAS_BACKFACE_EMISSION 0
+#define MDL_HAS_VOLUME_ABSORPTION 0
+#define MDL_CAN_BE_THIN_WALLED 0
+
+// #define MDL_NUM_TEXTURE_RESULTS 16
+
+#define ENABLE_AUXILIARY
+// #define MDL_DF_HANDLE_SLOT_MODE -1
+
+#define SCENE_DATA_ID_TEXCOORD_0 1
 
 // macros to append the target code ID to the function name.
 // this is required because the resulting DXIL libraries will be linked to same pipeline object
@@ -379,7 +413,7 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
     #endif
 
     // for thin-walled materials there is no 'inside'
-    const bool inside = has_flag(payload.flags, FLAG_INSIDE);
+    const bool inside = has_flag(payload.flags, uint(FLAG_INSIDE));
     const float ior1 = (inside &&!thin_walled) ? BSDF_USE_MATERIAL_IOR : 1.0f;
     const float ior2 = (inside &&!thin_walled) ? 1.0f : BSDF_USE_MATERIAL_IOR;
 
@@ -411,9 +445,9 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
         // evaluate EDF
         Edf_evaluate_data eval_data = (Edf_evaluate_data) 0;
         eval_data.k1 = -WorldRayDirection();
-        #if (MDL_DF_HANDLE_SLOT_MODE != -1)
-            eval_data.handle_offset = 0;
-        #endif
+        // #if (MDL_DF_HANDLE_SLOT_MODE != -1)
+        //     eval_data.handle_offset = 0;
+        // #endif
         float3 intensity = float3(0.0f, 0.0f, 0.0f);
 
         if (thin_walled && mdl_state.renderer_state.hit_backface && (MDL_HAS_BACKFACE_EMISSION == 1))
@@ -437,27 +471,19 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
             #endif
         }
 
-        // add emission
-        #if (MDL_DF_HANDLE_SLOT_MODE == -1)
-            payload.contribution += payload.weight * intensity * eval_data.edf;
-        #else
-            payload.contribution += payload.weight * intensity * eval_data.edf[0];
-        #endif
+		payload.contribution += payload.weight * intensity * eval_data.edf;
     }
     #endif
 
     // Write Auxiliary Buffers
     //---------------------------------------------------------------------------------------------
     #if defined(ENABLE_AUXILIARY)
-    if (has_flag(payload.flags, FLAG_FIRST_PATH_SEGMENT))
+    if (has_flag(payload.flags, uint(FLAG_FIRST_PATH_SEGMENT)))
     {
         Bsdf_auxiliary_data aux_data = (Bsdf_auxiliary_data) 0;
         aux_data.ior1 = ior1;                    // IOR current medium
         aux_data.ior2 = ior2;                    // IOR other side
         aux_data.k1 = -WorldRayDirection();      // outgoing direction
-        #if (MDL_DF_HANDLE_SLOT_MODE != -1)
-            aux_data.handle_offset = 0;
-        #endif
 
         // use backface instead of surface scattering?
         if (thin_walled && mdl_state.renderer_state.hit_backface && (MDL_HAS_BACKFACE_SCATTERING == 1))
@@ -474,17 +500,10 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
         }
 
         uint3 launch_index =  DispatchRaysIndex();
-        #if (MDL_DF_HANDLE_SLOT_MODE == -1)
-            AlbedoDiffuseBuffer[launch_index.xy] = float4(aux_data.albedo_diffuse, 1.0f);
-            AlbedoGlossyBuffer[launch_index.xy] = float4(aux_data.albedo_glossy, 1.0f);
-            NormalBuffer[launch_index.xy] = float4(aux_data.normal, 1.0f);
-            RoughnessBuffer[launch_index.xy] = float4(aux_data.roughness.xy, 0.0f, 1.0f);
-        #else
-            AlbedoDiffuseBuffer[launch_index.xy] = float4(aux_data.albedo_diffuse[0], 1.0f);
-            AlbedoGlossyBuffer[launch_index.xy] = float4(aux_data.albedo_glossy[0], 1.0f);
-            NormalBuffer[launch_index.xy] = float4(aux_data.normal[0], 1.0f);
-            RoughnessBuffer[launch_index.xy] = float4(aux_data.roughness[0].xy, 0.0f, 1.0f);
-        #endif
+		AlbedoDiffuseBuffer[launch_index.xy] = float4(aux_data.albedo_diffuse, 1.0f);
+		AlbedoGlossyBuffer[launch_index.xy] = float4(aux_data.albedo_glossy, 1.0f);
+		NormalBuffer[launch_index.xy] = float4(aux_data.normal, 1.0f);
+		RoughnessBuffer[launch_index.xy] = float4(aux_data.roughness.xy, 0.0f, 1.0f);
     }
     #endif
 
@@ -498,7 +517,7 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
     // do not next event estimation (but delay the adding of contribution)
     float3 contribution = float3(0.0f, 0.0f, 0.0f);
     const bool next_event_valid = ((dot(to_light, mdl_state.geom_normal) > 0.0f) != inside) && light_pdf != 0.0f &&
-        !has_flag(payload.flags, FLAG_LAST_PATH_SEGMENT);
+        !has_flag(payload.flags, uint(FLAG_LAST_PATH_SEGMENT));
 
     if (next_event_valid)
     {
@@ -508,9 +527,9 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
         eval_data.ior2 = ior2;
         eval_data.k1 = -WorldRayDirection();
         eval_data.k2 = to_light;
-        #if (MDL_DF_HANDLE_SLOT_MODE != -1)
-            eval_data.handle_offset = 0;
-        #endif
+        // #if (MDL_DF_HANDLE_SLOT_MODE != -1)
+        //     eval_data.handle_offset = 0;
+        // #endif
 
         // use backface instead of surface scattering?
         if (thin_walled && mdl_state.renderer_state.hit_backface && (MDL_HAS_BACKFACE_SCATTERING == 1))
@@ -535,13 +554,8 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
 
             // sample weight
             const float3 w = payload.weight * radiance_over_pdf * mis_weight;
-            #if (MDL_DF_HANDLE_SLOT_MODE == -1)
-                contribution += w * eval_data.bsdf_diffuse;
-                contribution += w * eval_data.bsdf_glossy;
-            #else
-                contribution += w * eval_data.bsdf_diffuse[0];
-                contribution += w * eval_data.bsdf_glossy[0];
-            #endif
+			contribution += w * eval_data.bsdf_diffuse;
+			contribution += w * eval_data.bsdf_glossy;
         }
     }
 
@@ -549,7 +563,7 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
     //---------------------------------------------------------------------------------------------
 
     // not a camera ray anymore
-    remove_flag(payload.flags, FLAG_CAMERA_RAY);
+    remove_flag(payload.flags, uint(FLAG_CAMERA_RAY));
 
     Bsdf_sample_data sample_data = (Bsdf_sample_data) 0;
     sample_data.ior1 = ior1;                    // IOR current medium
@@ -574,7 +588,7 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
     // stop on absorb
     if (sample_data.event_type == BSDF_EVENT_ABSORB)
     {
-        add_flag(payload.flags, FLAG_DONE);
+        add_flag(payload.flags, uint(FLAG_DONE));
         // no not return here, we need to do next event estimation first
     }
     else
@@ -585,7 +599,7 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
         payload.weight *= sample_data.bsdf_over_pdf;
         if ((sample_data.event_type & BSDF_EVENT_TRANSMISSION) != 0)
         {
-            toggle_flag(payload.flags, FLAG_INSIDE);
+            toggle_flag(payload.flags, uint(FLAG_INSIDE));
             // continue on the opposite side
             #if defined(USE_DERIVS)
                 payload.ray_origin_next = offset_ray(mdl_state.position.val, -mdl_state.geom_normal);
@@ -631,11 +645,11 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
 
     TraceRay(
         SceneBVH,               // AccelerationStructure
-        RAY_FLAG_NONE,          // RayFlags
+        uint(RAY_FLAG_NONE),          // RayFlags
         0xFF /* allow all */,   // InstanceInclusionMask
-        RAY_TYPE_SHADOW,        // RayContributionToHitGroupIndex
-        RAY_TYPE_COUNT,         // MultiplierForGeometryContributionToHitGroupIndex
-        RAY_TYPE_SHADOW,        // MissShaderIndex
+        RayType.RAY_TYPE_SHADOW,        // RayContributionToHitGroupIndex
+        RayType.RAY_TYPE_COUNT,         // MultiplierForGeometryContributionToHitGroupIndex
+        RayType.RAY_TYPE_SHADOW,        // MissShaderIndex
         ray,
         shadow_payload);
 

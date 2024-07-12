@@ -26,214 +26,22 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *****************************************************************************/
 
-#if !defined(MDL_RENDERER_RUNTIME_HLSLI)
-#define MDL_RENDERER_RUNTIME_HLSLI
-
-// compiler constants defined from outside:
-// - MDL_TARGET_REGISTER_SPACE
-// - MDL_TARGET_RO_DATA_SEGMENT_SLOT
-//
-// - MDL_MATERIAL_REGISTER_SPACE
-// - MDL_MATERIAL_ARGUMENT_BLOCK_SLOT
-// - MDL_MATERIAL_TEXTURE_INFO_SLOT
-// - MDL_MATERIAL_MBSDF_INFO_SLOT
-
-// - MDL_MATERIAL_TEXTURE_2D_REGISTER_SPACE
-// - MDL_MATERIAL_TEXTURE_3D_REGISTER_SPACE
-// - MDL_MATERIAL_TEXTURE_SLOT_BEGIN
-// 
-// - MDL_MATERIAL_BUFFER_REGISTER_SPACE
-// - MDL_MATERIAL_BUFFER_SLOT_BEGIN
-//
-// - MDL_TEXTURE_SAMPLER_SLOT
-// - MDL_LIGHT_PROFILE_SAMPLER_SLOT
-// - MDL_MBSDF_SAMPLER_SLOT
-
+import types;
+import buffers;
+import common;
 
 // MDL defines UV origin bottom left, D3D top left.
 // Because GLTF defines the UV origin also top left we end up flipping twice.
 // 1: from GLTF to MDL, in gltf.cpp when proccessing vertex data because it seems to be the common way.
 // 2: from MDL to D3D, implicity while uploading the texture data to the CPU
 // i.e., no flip required here.
-#if !defined(TEXTURE_VERTICAL_FLIP)
-    #define TEXTURE_VERTICAL_FLIP 0
-#endif
-
-/// Information passed to GPU for mapping id requested in the runtime functions to texture
-/// views of the corresponding type.
-struct Mdl_texture_info
-{
-    // index into the tex2d, tex3d, ... buffers, depending on the type requested
-    uint gpu_resource_array_start;
-
-    // number resources (e.g. uv-tiles) that belong to this resource
-    uint gpu_resource_array_size;
-
-    // frame number of the first texture/uv-tile
-    int gpu_resource_frame_first;
-
-    // coordinate of the left bottom most uv-tile (also bottom left corner)
-    int2 gpu_resource_uvtile_min;
-
-    // in case of uv-tiled textures, required to calculate a linear index (u + v * width
-    uint gpu_resource_uvtile_width;
-    uint gpu_resource_uvtile_height;
-
-    // get the last frame of an animated texture
-    int get_last_frame()
-    {
-        return gpu_resource_array_size / (gpu_resource_uvtile_width * gpu_resource_uvtile_height)
-            + gpu_resource_frame_first - 1;
-    }
-
-    // return the resource view index for a given uv-tile id. (see compute_uvtile_and_update_uv(...))
-    // returning of -1 indicates out of bounds, 0 refers to the invalid resource.
-    int compute_uvtile_id(float frame, int2 uv_tile)
-    {
-        if (gpu_resource_array_size == 1) // means no uv-tiles
-            return int(gpu_resource_array_start);
-
-        // simplest handling possible
-        int frame_number = floor(frame) - gpu_resource_frame_first;
-
-        uv_tile -= gpu_resource_uvtile_min;
-        const int offset = uv_tile.x +
-                           uv_tile.y * int(gpu_resource_uvtile_width) +
-                           frame_number * int(gpu_resource_uvtile_width) * int(gpu_resource_uvtile_height);
-        if (frame_number < 0 || uv_tile.x < 0 || uv_tile.y < 0 ||
-            uv_tile.x >= int(gpu_resource_uvtile_width) ||
-            uv_tile.y >= int(gpu_resource_uvtile_height) ||
-            offset >= gpu_resource_array_size)
-            return -1; // out of bounds
-
-        return int(gpu_resource_array_start) + offset;
-    }
-
-    // for uv-tiles, uv coordinate implicitly specifies which resource to use
-    // the index of the resource is returned while the uv mapped into the uv-tile
-    // if uv-tiles are not used, the data is just passed through
-    // returning of -1 indicates out of bounds, 0 refers to the invalid resource.
-    int compute_uvtile_id_and_update_uv(float frame, inout float2 uv)
-    {
-        if(gpu_resource_array_size == 1) // means no uv-tiles
-            return int(gpu_resource_array_start);
-
-        // uv-coordinate in the tile
-        const int2 uv_tile = abs(int2(floor(uv))); // abs because there are negative tile addresses
-        uv = frac(uv);
-
-        // compute a linear index
-        return compute_uvtile_id(frame, uv_tile);
-    }
-};
-
-/// Information passed to the GPU for each light profile resource
-struct Mdl_light_profile_info
-{
-    // angular resolution of the grid and its inverse
-    uint2 angular_resolution;
-    float2 inv_angular_resolution;
-
-    // starting angles of the grid
-    float2 theta_phi_start;
-
-    // angular step size and its inverse
-    float2 theta_phi_delta;
-    float2 theta_phi_inv_delta;
-
-    // factor to rescale the normalized data
-    // also represents the maximum candela value of the data
-    float candela_multiplier;
-
-    // power (radiant flux)
-    float total_power;
-
-    // index into the textures_2d array
-    // -  texture contains normalized data sampled on grid
-    uint eval_data_index;
-
-    // index into the buffers
-    // - CDFs for sampling a light profile
-    uint sample_data_index;
-};
-
-/// Information passed to the GPU for each BSDF measurement resource
-struct Mdl_mbsdf_info
-{
-    // if the MBSDF has data for reflection (0) and transmission (1)
-    uint2 has_data;
-
-    // index into the texture_3d array for both parts
-    // - texture contains the measurement values for evaluation
-    uint2 eval_data_index;
-
-    // indices into the buffers array for both parts
-    // - sample_data buffer contains CDFs for sampling
-    // - albedo_data buffer contains max albedos for each theta (isotropic)
-    uint2 sample_data_index;
-    uint2 albedo_data_index;
-
-    // maximum albedo values for both parts, used for limiting the multiplier
-    float2 max_albedo;
-
-    // discrete angular resolution for both parts
-    uint2 angular_resolution_theta;
-    uint2 angular_resolution_phi;
-
-    // number of color channels (1 for scalar, 3 for rgb) for both parts
-    uint2 num_channels;
-};
-
-// per target data
-ByteAddressBuffer mdl_ro_data_segment : register(MDL_TARGET_RO_DATA_SEGMENT_SLOT, MDL_TARGET_REGISTER_SPACE);
-
-// per material data
-// - argument block contains dynamic parameter data exposed in class compilation mode
-ByteAddressBuffer mdl_argument_block : register(MDL_MATERIAL_ARGUMENT_BLOCK_SLOT, MDL_MATERIAL_REGISTER_SPACE);
-// - resource infos map resource IDs, generated by the SDK, to actual buffer views
-StructuredBuffer<Mdl_texture_info> mdl_texture_infos : register(MDL_MATERIAL_TEXTURE_INFO_SLOT, MDL_MATERIAL_REGISTER_SPACE);
-// - light profile infos
-StructuredBuffer<Mdl_light_profile_info> mdl_light_profile_infos : register(MDL_MATERIAL_LIGHT_PROFILE_INFO_SLOT, MDL_MATERIAL_REGISTER_SPACE);
-// - bsdf measurement infos
-StructuredBuffer<Mdl_mbsdf_info> mdl_mbsdf_infos : register(MDL_MATERIAL_MBSDF_INFO_SLOT, MDL_MATERIAL_REGISTER_SPACE);
-// - texture views, unbound and overlapping for 2D and 3D resources
-Texture2D mdl_textures_2d[] : register(MDL_MATERIAL_TEXTURE_SLOT_BEGIN, MDL_MATERIAL_TEXTURE_2D_REGISTER_SPACE);
-Texture3D mdl_textures_3d[] : register(MDL_MATERIAL_TEXTURE_SLOT_BEGIN, MDL_MATERIAL_TEXTURE_3D_REGISTER_SPACE);
-// - buffer views, unbound. contains sampling and albedo buffers for MBSDFs and sampling buffers for light profiles
-StructuredBuffer<float> mdl_buffers[] : register(MDL_MATERIAL_BUFFER_SLOT_BEGIN, MDL_MATERIAL_BUFFER_REGISTER_SPACE);
-
-// mesh data, includes the per mesh scene data
-ByteAddressBuffer vertices : register(t1, space0);
-
-// instance data
-// - scene data buffer for object/instance data
-ByteAddressBuffer scene_data : register(t3, space0);
-// - mapping between scene_data_id and scene data buffer layout
-StructuredBuffer<SceneDataInfo> scene_data_infos: register(t4, space0);
-
-// global samplers
-SamplerState mdl_sampler_tex : register(MDL_TEXTURE_SAMPLER_SLOT);
-SamplerState mdl_sampler_light_profile : register(MDL_LIGHT_PROFILE_SAMPLER_SLOT);
-SamplerState mdl_sampler_mbsdf : register(MDL_MBSDF_SAMPLER_SLOT);
-
-// If USE_RES_DATA is defined, add a Res_data parameter to all resource handler functions.
-// This example doesn't use it, so we only put a dummy field in Res_data.
-#if USE_RES_DATA
-
-struct Res_data
-{
-    uint dummy;
-};
-
-#define RES_DATA_PARAM_DECL     Res_data res_data,
-#define RES_DATA_PARAM          res_data,
-
-#else
+// #if !defined(TEXTURE_VERTICAL_FLIP)
+//     #define TEXTURE_VERTICAL_FLIP 0
+// #endif
+// #define TEXTURE_VERTICAL_FLIP 0
 
 #define RES_DATA_PARAM_DECL
 #define RES_DATA_PARAM
-
-#endif
 
 // ------------------------------------------------------------------------------------------------
 // Argument block access for dynamic parameters in class compilation mode
@@ -444,9 +252,9 @@ float4 tex_lookup_float4_2d(
 
     coord = apply_smootherstep_filter(coord, res);
 
-#if (TEXTURE_VERTICAL_FLIP == 1)
+// #if (TEXTURE_VERTICAL_FLIP == 1)
     coord.y = 1.0 - coord.y;
-#endif
+// #endif
 
     // Note, since we don't have ddx and ddy in the compute pipeline, TextureObject::Sample() is not
     // available, we use SampleLevel instead and go for the most detailed level. Therefore, we don't
@@ -507,11 +315,11 @@ float4 tex_lookup_deriv_float4_2d(
 
     coord.val = apply_smootherstep_filter(coord.val, res);
 
-#if (TEXTURE_VERTICAL_FLIP == 1)
+// #if (TEXTURE_VERTICAL_FLIP == 1)
     coord.val.y = 1.0 - coord.val.y;
     coord.dx.y *= -1.0;
     coord.dy.y *= -1.0;
-#endif
+// #endif
 
     // Note, since we don't have ddx and ddy in the compute pipeline, TextureObject::Sample() is not
     // available, we use SampleLevel instead and go for the most detailed level. Therefore, we don't
@@ -563,9 +371,9 @@ float4 tex_texel_float4_2d(
     if (0 > coord.x || res.x <= coord.x || 0 > coord.y || res.y <= coord.y)
         return float4(0, 0, 0, 0); // out of bounds
 
-#if (TEXTURE_VERTICAL_FLIP == 1)
+// #if (TEXTURE_VERTICAL_FLIP == 1)
     coord.y = res.y - coord.y - 1;
-#endif
+// #endif
 
     return mdl_textures_2d[NonUniformResourceIndex(array_index)].Load(int3(coord, /*mipmaplevel=*/ 0));
 }
@@ -673,9 +481,9 @@ float4 tex_lookup_float4_3d(
     coord.y = apply_wrap_and_crop(coord.y, wrap_v, crop_v, height);
     coord.z = apply_wrap_and_crop(coord.z, wrap_w, crop_w, depth);
 
-#if (TEXTURE_VERTICAL_FLIP == 1)
+// #if (TEXTURE_VERTICAL_FLIP == 1)
     coord.y = 1.0 - coord.y;
-#endif
+// #endif
 
     // Note, since we don't have ddx and ddy in the compute pipeline, TextureObject::Sample() is not
     // available, we use SampleLevel instead and go for the most detailed level. Therefore, we don't
@@ -724,9 +532,9 @@ float4 tex_texel_float4_3d(
     if (0 > coord.x || res.x <= coord.x || 0 > coord.y || res.y <= coord.y || 0 > coord.z || res.z <= coord.z)
         return float4(0, 0, 0, 0); // out of bounds
 
-#if (TEXTURE_VERTICAL_FLIP == 1)
-    coord.y = res.y - coord.y - 1;
-#endif
+// #if (TEXTURE_VERTICAL_FLIP == 1)
+    // coord.y = res.y - coord.y - 1;
+// #endif
 
     return mdl_textures_3d[NonUniformResourceIndex(array_index)].Load(int4(coord, /*mipmaplevel=*/ 0));
 }
@@ -1732,5 +1540,3 @@ Derived_float scene_data_lookup_deriv_float(
     res.dy = 0;
     return res;
 }
-
-#endif // MDL_RENDERER_RUNTIME_HLSLI

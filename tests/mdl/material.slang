@@ -1,41 +1,6 @@
-#define MDL_TARGET_REGISTER_SPACE space2
-#define MDL_TARGET_RO_DATA_SEGMENT_SLOT t0
-
-#define MDL_MATERIAL_REGISTER_SPACE space3
-#define MDL_MATERIAL_ARGUMENT_BLOCK_SLOT t1
-#define MDL_MATERIAL_TEXTURE_INFO_SLOT t2
-#define MDL_MATERIAL_LIGHT_PROFILE_INFO_SLOT t3
-#define MDL_MATERIAL_MBSDF_INFO_SLOT t4
-
-#define MDL_MATERIAL_TEXTURE_2D_REGISTER_SPACE space4
-#define MDL_MATERIAL_TEXTURE_3D_REGISTER_SPACE space5
-#define MDL_MATERIAL_TEXTURE_SLOT_BEGIN t0
-
-#define MDL_MATERIAL_BUFFER_REGISTER_SPACE space6
-#define MDL_MATERIAL_BUFFER_SLOT_BEGIN t0
-
-#define MDL_HAS_INIT 1
-#define MDL_HAS_SURFACE_SCATTERING 1
-#define MDL_HAS_SURFACE_EMISSION 0
-#define MDL_HAS_BACKFACE_SCATTERING 0
-#define MDL_HAS_BACKFACE_EMISSION 0
-#define MDL_HAS_VOLUME_ABSORPTION 0
-#define MDL_CAN_BE_THIN_WALLED 0
-
-#define MDL_TEXTURE_SAMPLER_SLOT s0
-#define MDL_LIGHT_PROFILE_SAMPLER_SLOT s1
-#define MDL_MBSDF_SAMPLER_SLOT s2
-#define MDL_LATLONGMAP_SAMPLER_SLOT s3
-#define MDL_NUM_TEXTURE_RESULTS 16
-
-#define ENABLE_AUXILIARY
-#define MDL_DF_HANDLE_SLOT_MODE -1
-
-#define SCENE_DATA_ID_TEXCOORD_0 1
-
-#include "common.hlsl"
-#include "types.hlsl"
-#include "runtime.hlsl"
+import types;
+import buffers;
+import runtime;
 
 // functions
 void mdl_init(inout Shading_state_material state)
@@ -241,7 +206,7 @@ void mdl_surface_scattering_sample(inout Bsdf_sample_data sret_ptr, in Shading_s
     tmp26 = tmp25.x + tmp25.y + tmp25.z;
     if (tmp26 < 9.999999939e-09f) {
         sret_ptr.pdf = 0.0f;
-        sret_ptr.event_type = 0;
+        sret_ptr.event_type = Bsdf_event_type(0);
         tmp27 = sret_ptr.ior1.x;
         tmp28 = sret_ptr.ior2.x;
         phi_in = tmp28;
@@ -308,7 +273,7 @@ void mdl_surface_scattering_sample(inout Bsdf_sample_data sret_ptr, in Shading_s
         phi_out70 = phi_in69;
         if (tmp59.y == 0.0f) {
             sret_ptr.pdf = 0.0f;
-            sret_ptr.event_type = 0;
+            sret_ptr.event_type = Bsdf_event_type(0);
         } else {
             tmp71 = phi_out68 * tmp36.x + tmp59.y * tmp18 + phi_out70 * tmp32;
             tmp72 = phi_out68 * tmp36.y + tmp59.y * tmp19 + phi_out70 * tmp33;
@@ -324,7 +289,7 @@ void mdl_surface_scattering_sample(inout Bsdf_sample_data sret_ptr, in Shading_s
                 sret_ptr.k2.x = tmp78;
                 sret_ptr.k2.y = tmp79;
                 sret_ptr.k2.z = tmp80;
-                sret_ptr.event_type = 10;
+                sret_ptr.event_type = Bsdf_event_type(10);
                 sret_ptr.bsdf_over_pdf.x = 1.0f;
                 sret_ptr.bsdf_over_pdf.y = 1.0f;
                 sret_ptr.bsdf_over_pdf.z = 1.0f;
@@ -344,15 +309,15 @@ void mdl_surface_scattering_sample(inout Bsdf_sample_data sret_ptr, in Shading_s
                         sret_ptr.handle = 0;
                     } else {
                         sret_ptr.pdf = 0.0f;
-                        sret_ptr.event_type = 0;
+                        sret_ptr.event_type = Bsdf_event_type(0);
                     }
                 } else {
                     sret_ptr.pdf = 0.0f;
-                    sret_ptr.event_type = 0;
+                    sret_ptr.event_type = Bsdf_event_type(0);
                 }
             } else {
                 sret_ptr.pdf = 0.0f;
-                sret_ptr.event_type = 0;
+                sret_ptr.event_type = Bsdf_event_type(0);
             }
         }
         sret_ptr.bsdf_over_pdf.x = sret_ptr.bsdf_over_pdf.x * tmp5;
@@ -600,7 +565,3 @@ float mdl_standalone_geometry_cutout_opacity(in Shading_state_material state)
 {
     return 1.0f;
 }
-
-
-#include "hit.hlsl"
-
