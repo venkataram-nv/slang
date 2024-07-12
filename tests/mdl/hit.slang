@@ -31,23 +31,9 @@ import material;
 import buffers;
 import common;
 import runtime;
-
-#if !defined(TARGET_CODE_ID)
-    #define TARGET_CODE_ID 0
-#endif
-
-#define MDL_MATERIAL_REGISTER_SPACE space3
-#define MDL_MATERIAL_ARGUMENT_BLOCK_SLOT t1
-#define MDL_MATERIAL_TEXTURE_INFO_SLOT t2
-#define MDL_MATERIAL_LIGHT_PROFILE_INFO_SLOT t3
-#define MDL_MATERIAL_MBSDF_INFO_SLOT t4
-
-#define MDL_MATERIAL_TEXTURE_2D_REGISTER_SPACE space4
-#define MDL_MATERIAL_TEXTURE_3D_REGISTER_SPACE space5
-#define MDL_MATERIAL_TEXTURE_SLOT_BEGIN t0
-
-#define MDL_MATERIAL_BUFFER_REGISTER_SPACE space6
-#define MDL_MATERIAL_BUFFER_SLOT_BEGIN t0
+import enumerations;
+import environment;
+import shading;
 
 #define MDL_HAS_INIT 1
 #define MDL_HAS_SURFACE_SCATTERING 1
@@ -64,67 +50,39 @@ import runtime;
 
 #define SCENE_DATA_ID_TEXCOORD_0 1
 
-// macros to append the target code ID to the function name.
-// this is required because the resulting DXIL libraries will be linked to same pipeline object
-// and for that, the entry point names have to be unique.
-#define export_name_impl(name, id) name ## _ ## id
-#define export_name_impl_2(name, id) export_name_impl(name, id)
-#define export_name(name) export_name_impl_2(name, TARGET_CODE_ID)
-
-#define MDL_RADIANCE_ANY_HIT_PROGRAM        export_name(MdlRadianceAnyHitProgram)
-#define MDL_RADIANCE_CLOSEST_HIT_PROGRAM    export_name(MdlRadianceClosestHitProgram)
-#define MDL_SHADOW_ANY_HIT_PROGRAM          export_name(MdlShadowAnyHitProgram)
-
-#if defined(WITH_ENUM_SUPPORT)
-    enum MaterialFlags
-    {
-        MATERIAL_FLAG_NONE          = 0,
-        MATERIAL_FLAG_OPAQUE        = 1 << 0, // allows to skip opacity evaluation
-        MATERIAL_FLAG_SINGLE_SIDED  = 1 << 1  // geometry is only visible from the front side
-    };
-#else
-    #define MaterialFlags uint
-    #define MATERIAL_FLAG_NONE          0
-    #define MATERIAL_FLAG_OPAQUE        (1 << 0)
-    #define MATERIAL_FLAG_SINGLE_SIDED  (1 << 1)
-#endif
-
 // ------------------------------------------------------------------------------------------------
 // defined in the global root signature
 // ------------------------------------------------------------------------------------------------
 
 // for some post processing effects or for AI denoising, auxiliary outputs are required.
 // from the MDL material perspective albedo (approximation) and normals can be generated.
-#if defined(ENABLE_AUXILIARY)
-    // in order to limit the payload size, this data is written directly from the hit programs
-    RWTexture2D<float4> AlbedoDiffuseBuffer : register(u2, space0);
-    RWTexture2D<float4> AlbedoGlossyBuffer : register(u3, space0);
-    RWTexture2D<float4> NormalBuffer : register(u4, space0);
-    RWTexture2D<float4> RoughnessBuffer : register(u5, space0);
-#endif
+RWTexture2D<float4> AlbedoDiffuseBuffer;
+RWTexture2D<float4> AlbedoGlossyBuffer;
+RWTexture2D<float4> NormalBuffer;
+RWTexture2D<float4> RoughnessBuffer;
 
 // Ray tracing acceleration structure, accessed as a SRV
-RaytracingAccelerationStructure SceneBVH : register(t0, space0);
+RaytracingAccelerationStructure SceneBVH;
 
 // Environment map and sample data for importance sampling
-Texture2D<float4> environment_texture : register(t0, space1);
-StructuredBuffer<Environment_sample_data> environment_sample_buffer : register(t1, space1);
+Texture2D<float4> environment_texture;
+StructuredBuffer<Environment_sample_data> environment_sample_buffer;
 
 // ------------------------------------------------------------------------------------------------
 // defined in the local root signature
 // ------------------------------------------------------------------------------------------------
 
 // mesh data
-StructuredBuffer<uint> indices: register(t2, space0);
+StructuredBuffer<uint> indices;
 
 // geometry data
 // as long as there are only a few values here, place them directly instead of a constant buffer
-cbuffer _Geometry_constants_0 : register(b2, space0) { uint geometry_vertex_buffer_byte_offset; }
-cbuffer _Geometry_constants_1 : register(b3, space0) { uint geometry_vertex_stride; }
-cbuffer _Geometry_constants_2 : register(b4, space0) { uint geometry_index_offset; }
-cbuffer _Geometry_constants_3 : register(b5, space0) { uint geometry_scene_data_info_offset; }
+cbuffer _Geometry_constants_0 { uint geometry_vertex_buffer_byte_offset; }
+cbuffer _Geometry_constants_1 { uint geometry_vertex_stride; }
+cbuffer _Geometry_constants_2 { uint geometry_index_offset; }
+cbuffer _Geometry_constants_3 { uint geometry_scene_data_info_offset; }
 
-cbuffer Material_constants : register(b0, MDL_MATERIAL_REGISTER_SPACE)
+cbuffer Material_constants
 {
     // shared for all material compiled from the same MDL material
     // - none -
@@ -134,24 +92,20 @@ cbuffer Material_constants : register(b0, MDL_MATERIAL_REGISTER_SPACE)
     uint material_flags;
 }
 
-// Defined in the code generator, enable everything here for source code editing only
-#if !defined(MDL_HAS_SURFACE_SCATTERING)
-#define MDL_HAS_SURFACE_SCATTERING 1
-#define MDL_HAS_SURFACE_EMISSION 1
-#define MDL_HAS_BACKFACE_SCATTERING 1
-#define MDL_HAS_BACKFACE_EMISSION 1
-#define MDL_HAS_VOLUME_ABSORPTION 1
-#define MDL_CAN_BE_THIN_WALLED 1
-#define MDL_HAS_INIT 1
-#endif
+// [UnscopedEnum]
+// public enum VertexByteOffset : uint
+// {
+// 	VERT_BYTEOFFSET_POSITION = 0,
+// 	VERT_BYTEOFFSET_NORMAL = 12,
+// 	VERT_BYTEOFFSET_TANGENT = 24,
+// };
 
 // ------------------------------------------------------------------------------------------------
 // helper
 // ------------------------------------------------------------------------------------------------
 
 // selects one light source randomly
-float3 sample_lights(
-    Shading_state_material state, out float3 to_light, out float light_pdf, inout uint seed)
+float3 sample_lights(Shading_state_material state, out float3 to_light, out float light_pdf, inout uint seed)
 {
     float p_select_light = 1.0f;
     if (point_light_enabled != 0)
@@ -238,9 +192,7 @@ bool is_back_face()
     return dot(geom_normal, ObjectRayDirection()) > 0.0f;
 }
 
-void setup_mdl_shading_state(
-    out Shading_state_material mdl_state,
-    Attributes attrib)
+void setup_mdl_shading_state(out Shading_state_material mdl_state, Attributes attrib)
 {
     // get vertex indices for the hit triangle
     const uint index_offset = 3 * PrimitiveIndex() + geometry_index_offset;
@@ -302,15 +254,15 @@ void setup_mdl_shading_state(
     // fill the actual state fields used by MD
     mdl_state.normal = world_normal;
     mdl_state.geom_normal = world_geom_normal;
-    #if defined(USE_DERIVS)
-        // currently not supported
-        mdl_state.position.val = hit_position;
-        mdl_state.position.dx = float3(0, 0, 0);
-        mdl_state.position.dy = float3(0, 0, 0);
-    #else
-        mdl_state.position = hit_position;
-    #endif
-    mdl_state.animation_time = enable_animiation ? total_time : 0.0f;
+    // #if defined(USE_DERIVS)
+    //     // currently not supported
+    //     mdl_state.position.val = hit_position;
+    //     mdl_state.position.dx = float3(0, 0, 0);
+    //     mdl_state.position.dy = float3(0, 0, 0);
+    // #else
+    mdl_state.position = hit_position;
+    // #endif
+    mdl_state.animation_time = bool(enable_animiation) ? total_time : 0.0f;
     mdl_state.tangent_u[0] = world_tangent;
     mdl_state.tangent_v[0] = world_binormal;
     // #if defined(USE_TEXTURE_RESULTS)
@@ -348,14 +300,14 @@ void setup_mdl_shading_state(
         texcoord0 = saturate(texcoord0);
     }
 
-    #if defined(USE_DERIVS)
-        // would make sense in a rasterizer. for a ray tracers this is not straight forward
-        mdl_state.text_coords[0].val = float3(texcoord0, 0);
-        mdl_state.text_coords[0].dx = float3(0, 0, 0); // float3(ddx(texcoord0), 0);
-        mdl_state.text_coords[0].dy = float3(0, 0, 0); // float3(ddy(texcoord0), 0);
-    #else
-        mdl_state.text_coords[0] = float3(texcoord0, 0);
-    #endif
+    // #if defined(USE_DERIVS)
+    //     // would make sense in a rasterizer. for a ray tracers this is not straight forward
+    //     mdl_state.text_coords[0].val = float3(texcoord0, 0);
+    //     mdl_state.text_coords[0].dx = float3(0, 0, 0); // float3(ddx(texcoord0), 0);
+    //     mdl_state.text_coords[0].dy = float3(0, 0, 0); // float3(ddy(texcoord0), 0);
+    // #else
+    mdl_state.text_coords[0] = float3(texcoord0, 0);
+    // #endif
 }
 
 
@@ -364,10 +316,10 @@ void setup_mdl_shading_state(
 // ------------------------------------------------------------------------------------------------
 
 [shader("anyhit")]
-void MDL_RADIANCE_ANY_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes attrib)
+void anyhit(inout RadianceHitInfo payload, Attributes attrib)
 {
     // back face culling
-    if (has_flag(material_flags, MATERIAL_FLAG_SINGLE_SIDED)) {
+    if (has_flag(material_flags, uint(MATERIAL_FLAG_SINGLE_SIDED))) {
         if (is_back_face()) {
             IgnoreHit();
             return;
@@ -375,7 +327,7 @@ void MDL_RADIANCE_ANY_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes attr
     }
 
     // early out if there is no opacity function
-    if (has_flag(material_flags, MATERIAL_FLAG_OPAQUE))
+    if (has_flag(material_flags, uint(MATERIAL_FLAG_OPAQUE)))
         return;
 
     // setup MDL state
@@ -393,7 +345,7 @@ void MDL_RADIANCE_ANY_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes attr
 }
 
 [shader("closesthit")]
-void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes attrib)
+void closesthit(inout RadianceHitInfo payload, Attributes attrib)
 {
     // setup MDL state
     Shading_state_material mdl_state;
@@ -663,18 +615,20 @@ void MDL_RADIANCE_CLOSEST_HIT_PROGRAM(inout RadianceHitInfo payload, Attributes 
 // ------------------------------------------------------------------------------------------------
 
 [shader("anyhit")]
-void MDL_SHADOW_ANY_HIT_PROGRAM(inout ShadowHitInfo payload, Attributes attrib)
+void shadow(inout ShadowHitInfo payload, Attributes attrib)
 {
     // back face culling
-    if (has_flag(material_flags, MATERIAL_FLAG_SINGLE_SIDED)) {
-        if (is_back_face()) {
+    if (has_flag(material_flags, uint(MATERIAL_FLAG_SINGLE_SIDED)))
+    {
+        if (is_back_face())
+        {
             IgnoreHit();
             return;
         }
     }
 
     // early out if there is no opacity function
-    if (has_flag(material_flags, MATERIAL_FLAG_OPAQUE))
+    if (has_flag(material_flags, uint(MATERIAL_FLAG_OPAQUE)))
     {
         payload.isHit = true;
         AcceptHitAndEndSearch();

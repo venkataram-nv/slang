@@ -1,6 +1,8 @@
 import types;
 import buffers;
 import runtime;
+import enumerations;
+import shading;
 
 // functions
 void mdl_init(inout Shading_state_material state)

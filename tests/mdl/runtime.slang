@@ -29,6 +29,9 @@
 import types;
 import buffers;
 import common;
+import enumerations;
+import mdl;
+import shading;
 
 // MDL defines UV origin bottom left, D3D top left.
 // Because GLTF defines the UV origin also top left we end up flipping twice.
