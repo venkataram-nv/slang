@@ -20,16 +20,20 @@ for file in *.slang; do
 
 	header "file: $file"
 	if [ "$file" = "hit.slang" ]; then
-		time slangc $file -entry closesthit -o modules/closesthit.slang-module
-		time slangc $file -entry anyhit -o modules/anyhit.slang-module
-		time slangc $file -entry shadow -o modules/shadow.slang-module
+		echo ""
+		echo "Closest hit shader:"
+		slangc $file -entry closesthit -o modules/closesthit.slang-module
+		echo "Any hit shader:"
+		slangc $file -entry anyhit -o modules/anyhit.slang-module
+		echo "Shadow hit shader:"
+		slangc $file -entry shadow -o modules/shadow.slang-module
 
 		files="modules/closesthit.slang-module
 		modules/anyhit.slang-module
 		modules/shadow.slang-module
 		$files"
 	else
-		time slangc $file -o modules/$file-module
+		slangc $file -o modules/$file-module
 		list="modules/$file-module $list"
 		files="modules/$file-module
 		$files"
@@ -41,15 +45,22 @@ header "compiling altogether:"
 echo "
 $files"
 
-time slangc $list modules/closesthit.slang-module -target dxil -entry closesthit -o dxr.dxil
-time slangc $list modules/anyhit.slang-module -target dxil -entry anyhit -o dxr.dxil
-time slangc $list modules/shadow.slang-module -target dxil -entry shadow -o dxr.dxil
+echo "Closest hit shader:"
+slangc $list modules/closesthit.slang-module -target dxil -entry closesthit -o dxr.dxil
+echo "Any hit shader:"
+slangc $list modules/anyhit.slang-module -target dxil -entry anyhit -o dxr.dxil
+echo "Shadow hit shader:"
+slangc $list modules/shadow.slang-module -target dxil -entry shadow -o dxr.dxil
 
 header "monolithic compilation:"
 
-time slangc hit.slang -target dxil -entry closesthit -o dxr-monolothic.dxil
-time slangc hit.slang -target dxil -entry anyhit -o dxr-monolothic.dxil
-time slangc hit.slang -target dxil -entry shadow -o dxr-monolothic.dxil
+echo ""
+echo "Closest hit shader:"
+slangc hit.slang -target dxil -entry closesthit -o dxr-monolothic.dxil
+echo "Any hit shader:"
+slangc hit.slang -target dxil -entry anyhit -o dxr-monolothic.dxil
+echo "Shadow hit shader:"
+slangc hit.slang -target dxil -entry shadow -o dxr-monolothic.dxil
 
 # read -p "dump spirv-asm? (y/n): " confirm
 # if [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then

@@ -4,6 +4,7 @@
 
 #include "slang-repro.h"
 
+#include "../core/slang-timers.h"
 #include "../core/slang-shared-library.h"
 #include "../slang-capture-replay/slang-global-session.h"
 #include "../slang-capture-replay/capture_utility.h"
@@ -81,6 +82,7 @@ SLANG_API SlangResult slang_createGlobalSession(
     SlangInt                apiVersion,
     slang::IGlobalSession** outGlobalSession)
 {
+
     Slang::ComPtr<slang::IGlobalSession> globalSession;
 
 #ifdef SLANG_ENABLE_IR_BREAK_ALLOC
