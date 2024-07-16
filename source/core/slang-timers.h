@@ -4,7 +4,7 @@
 struct ScopedTimer {
     using clk_t = std::chrono::high_resolution_clock;
     using time_t = clk_t::time_point;
-    using millis = std::chrono::milliseconds;
+    using micro  = std::chrono::microseconds;
 
     std::string section;
 
@@ -19,10 +19,10 @@ struct ScopedTimer {
     ~ScopedTimer() {
         end = clk.now();
     
-        auto delta_ms = std::chrono::duration_cast <millis> (end - start).count();
-        auto delta_s = float(delta_ms) / 1000.0;
+        auto delta_ms = std::chrono::duration_cast <micro> (end - start).count();
+        auto delta_s = float(delta_ms) / 1e6;
 
-        printf("%50s: %.3fs\n", section.c_str(), delta_s);
+        printf("%50s: %.6fs\n", section.c_str(), delta_s);
     }
 };
 
