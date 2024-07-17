@@ -50,7 +50,6 @@ static SlangResult _compile(SlangCompileRequest* compileRequest, int argc, const
     try
 #endif
     {
-        __scoped_timer_section(spCompile)
         // Run the compiler (this will produce any diagnostics through SLANG_WRITER_TARGET_TYPE_DIAGNOSTIC).
         res = spCompile(compileRequest);
         // If the compilation failed, then get out of here...
@@ -90,12 +89,10 @@ SLANG_TEST_TOOL_API SlangResult innerMain(StdWriters* stdWriters, slang::IGlobal
     // If so we *don't* use the sharedSession, and create a new stdlib-less session just for this compilation. 
     if (TestToolUtil::hasDeferredStdLib(Index(argc - 1), argv + 1))
     {
-        __scoped_timer_section(create_global_session_no_stdlib)
         SLANG_RETURN_ON_FAIL(slang_createGlobalSessionWithoutStdLib(SLANG_API_VERSION, session.writeRef()));
     }
     else if (!session)
     {
-        __scoped_timer_section(create_global_session)
         // Just create the global session in the regular way if there isn't one set
         SLANG_RETURN_ON_FAIL(slang_createGlobalSession(SLANG_API_VERSION, session.writeRef()));
     }
@@ -117,7 +114,6 @@ SLANG_TEST_TOOL_API SlangResult innerMain(StdWriters* stdWriters, slang::IGlobal
 
 int MAIN(int argc, char** argv)
 {
-    __scoped_timer()
     auto stdWriters = StdWriters::initDefaultSingleton();
     SlangResult res = innerMain(stdWriters, nullptr, argc, argv);
     return (int)TestToolUtil::getReturnCode(res);

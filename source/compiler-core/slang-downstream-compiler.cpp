@@ -12,6 +12,8 @@
 #include "../core/slang-blob.h"
 #include "../core/slang-char-util.h"
 
+#include "../core/slang-timers.h"
+
 #include "../core/slang-castable.h"
 
 #include "slang-artifact-impl.h"
@@ -66,6 +68,7 @@ void* DownstreamCompilerBase::getObject(const Guid& guid)
 
 SlangResult CommandLineDownstreamCompiler::compile(const CompileOptions& inOptions, IArtifact** outArtifact)
 {
+    __scoped_timer_section(cli_compile)
     if (!isVersionCompatible(inOptions))
     {
         // Not possible to compile with this version of the interface.

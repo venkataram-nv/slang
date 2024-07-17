@@ -1,6 +1,7 @@
 #include "slang.h"
 
 #include "../core/slang-io.h"
+#include "../core/slang-timers.h"
 #include "../core/slang-string-util.h"
 #include "../core/slang-shared-library.h"
 #include "../core/slang-archive-file-system.h"
@@ -2656,6 +2657,7 @@ static void _outputIncludes(const List<SourceFile*>& sourceFiles, SourceManager*
 void FrontEndCompileRequest::parseTranslationUnit(
     TranslationUnitRequest* translationUnit)
 {
+    __scoped_timer()
     if (translationUnit->isChecked)
         return;
 
@@ -2838,6 +2840,7 @@ void FrontEndCompileRequest::checkAllTranslationUnits()
 
 void FrontEndCompileRequest::generateIR()
 {
+    __scoped_timer()
     SLANG_AST_BUILDER_RAII(getLinkage()->getASTBuilder());
 
     // Our task in this function is to generate IR code
@@ -2960,7 +2963,11 @@ SlangResult FrontEndCompileRequest::executeActionsInner()
         return SLANG_FAIL;
 
     // Perform semantic checking on the whole collection
-    checkAllTranslationUnits();
+    {
+        __scoped_timer_section(SemanticChecking)
+        checkAllTranslationUnits();
+    }
+
     if (getSink()->getErrorCount() != 0)
         return SLANG_FAIL;
 
@@ -3013,6 +3020,7 @@ SlangResult FrontEndCompileRequest::executeActionsInner()
     // makes sense.
     //
     generateIR();
+
     if (getSink()->getErrorCount() != 0)
         return SLANG_FAIL;
 
@@ -3120,6 +3128,7 @@ SlangResult EndToEndCompileRequest::executeActionsInner()
     //
     if (m_passThrough == PassThroughMode::None)
     {
+        __scoped_timer_section(FrontEndActionsInner)
         SLANG_RETURN_ON_FAIL(getFrontEndReq()->executeActionsInner());
     }
 
@@ -3177,6 +3186,7 @@ SlangResult EndToEndCompileRequest::executeActionsInner()
     }
     else
     {
+        __scoped_timer_section(with_passthrough)
         // We need to create dummy `EntryPoint` objects
         // to make sure that the logic in `generateOutput`
         // sees something worth processing.
@@ -3212,6 +3222,7 @@ SlangResult EndToEndCompileRequest::executeActionsInner()
 // Act as expected of the API-based compiler
 SlangResult EndToEndCompileRequest::executeActions()
 {
+    __scoped_timer()
     SlangResult res = executeActionsInner();
 
     m_diagnosticOutput = getSink()->outputBuffer.produceString();
@@ -5554,6 +5565,7 @@ void Session::addBuiltinSource(
     String const&           path,
     ISlangBlob*             sourceBlob)
 {
+    __scoped_timer_section(add_builtin_source)
     SourceManager* sourceManager = getBuiltinSourceManager();
 
     DiagnosticSink sink(sourceManager, Lexer::sourceLocationLexer);

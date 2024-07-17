@@ -633,6 +633,7 @@ SLANG_API SlangResult spSetTypeNameForEntryPointExistentialTypeParam(
 SLANG_API SlangResult spCompile(
     slang::ICompileRequest*    request)
 {
+    __scoped_timer()
     SLANG_ASSERT(request);
     return request->compile();
 }

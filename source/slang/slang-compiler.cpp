@@ -3,6 +3,7 @@
 #include "../core/slang-basic.h"
 #include "../core/slang-platform.h"
 #include "../core/slang-io.h"
+#include "../core/slang-timers.h"
 #include "../core/slang-string-util.h"
 #include "../core/slang-hex-dump-util.h"
 #include "../core/slang-riff.h"
@@ -1086,6 +1087,7 @@ namespace Slang
 
     SlangResult CodeGenContext::emitWithDownstreamForEntryPoints(ComPtr<IArtifact>& outArtifact)
     {
+        __scoped_timer()
         outArtifact.setNull();
 
         auto sink = getSink();
@@ -1588,6 +1590,7 @@ namespace Slang
         /// Function to simplify the logic around emitting, and dissassembling
     SlangResult CodeGenContext::_emitEntryPoints(ComPtr<IArtifact>& outArtifact)
     {
+        __scoped_timer()
         auto target = getTargetFormat();
         switch (target)
         {
@@ -1596,6 +1599,7 @@ namespace Slang
             case CodeGenTarget::DXILAssembly:
             case CodeGenTarget::MetalLibAssembly:
             {
+                __scoped_timer_section(assembly)
                 // First compile to an intermediate target for the corresponding binary format.
                 const CodeGenTarget intermediateTarget = _getIntermediateTarget(target);
                 CodeGenContext intermediateContext(this, intermediateTarget);
@@ -1801,6 +1805,7 @@ namespace Slang
         DiagnosticSink* sink,
         EndToEndCompileRequest* endToEndReq)
     {
+        __scoped_timer()
         // We want to call `emitEntryPoints` function to generate code that contains
         // all the entrypoints defined in `m_program`.
         // The current logic of `emitEntryPoints` takes a list of entry-point indices to
@@ -1909,6 +1914,7 @@ namespace Slang
         {
             for (Index ii = 0; ii < entryPointCount; ++ii)
             {
+                __scoped_timer_section(entry_point_result)
                 targetProgram->_createEntryPointResult(
                     ii,
                     getSink(),
@@ -2250,6 +2256,7 @@ namespace Slang
 
     void EndToEndCompileRequest::generateOutput()
     {
+        __scoped_timer()
         generateOutput(getSpecializedGlobalAndEntryPointsComponentType());
         
         // If we are in command-line mode, we might be expected to actually
@@ -2276,6 +2283,7 @@ namespace Slang
                 }
                 else
                 {
+                    __scoped_timer_section(generate_entry_point)
                     Index entryPointCount = program->getEntryPointCount();
                     for (Index ee = 0; ee < entryPointCount; ++ee)
                     {        

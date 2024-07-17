@@ -3,6 +3,7 @@
 #include "../core/slang-platform.h"
 
 #include "../core/slang-io.h"
+#include "../core/slang-timers.h"
 #include "../core/slang-string-util.h"
 #include "../core/slang-hex-dump-util.h"
 
@@ -19,6 +20,7 @@ namespace Slang
 
 /* static */SlangResult ArtifactOutputUtil::dissassembleWithDownstream(Session* session, IArtifact* artifact, DiagnosticSink* sink, IArtifact** outArtifact)
 {
+    __scoped_timer()
     auto desc = artifact->getDesc();
 
     auto assemblyDesc = desc;

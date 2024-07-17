@@ -14,6 +14,8 @@
 #include "../core/slang-semantic-version.h"
 #include "../core/slang-char-util.h"
 
+#include "../core/slang-timers.h"
+
 #include "slang-artifact-associated-impl.h"
 #include "slang-artifact-desc-util.h"
 
@@ -162,6 +164,7 @@ static SlangResult _parseDiagnosticLine(SliceAllocator& allocator, const Unowned
 
 SlangResult GlslangDownstreamCompiler::compile(const CompileOptions& inOptions, IArtifact** outArtifact)
 {
+    __scoped_timer()
     if (!isVersionCompatible(inOptions))
     {
         // Not possible to compile with this version of the interface.

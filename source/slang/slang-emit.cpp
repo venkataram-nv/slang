@@ -1,6 +1,7 @@
 // slang-emit.cpp
 
 #include "../core/slang-writer.h"
+#include "../core/slang-timers.h"
 #include "../core/slang-type-text-util.h"
 
 #include "../compiler-core/slang-name.h"
@@ -415,6 +416,7 @@ Result linkAndOptimizeIR(
     LinkingAndOptimizationOptions const&    options,
     LinkedIR&                               outLinkedIR)
 {
+    __scoped_timer()
     SLANG_PROFILE;
     auto session = codeGenContext->getSession();
     auto sink = codeGenContext->getSink();
@@ -1666,6 +1668,7 @@ SlangResult emitSPIRVForEntryPointsDirectly(
     CodeGenContext* codeGenContext,
     ComPtr<IArtifact>& outArtifact)
 {
+    __scoped_timer()
     // Outside because we want to keep IR in scope whilst we are processing emits
     LinkedIR linkedIR;
     LinkingAndOptimizationOptions linkingAndOptimizationOptions;
@@ -1732,9 +1735,12 @@ SlangResult emitSPIRVForEntryPointsDirectly(
         default: SLANG_ASSERT(!"Unhandled optimization level"); break;
         }
         auto downstreamStartTime = std::chrono::high_resolution_clock::now();
-        if (SLANG_SUCCEEDED(compiler->compile(downstreamOptions, optimizedArtifact.writeRef())))
         {
-            artifact = _Move(optimizedArtifact);
+            __scoped_timer_section(SpirvOpt)
+            if (SLANG_SUCCEEDED(compiler->compile(downstreamOptions, optimizedArtifact.writeRef())))
+            {
+                artifact = _Move(optimizedArtifact);
+            }
         }
         auto downstreamElapsedTime =
             (std::chrono::high_resolution_clock::now() - downstreamStartTime).count() * 0.000000001;

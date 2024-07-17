@@ -14,6 +14,7 @@
 #include "slang-lookup-spirv.h"
 #include "spirv/unified1/spirv.h"
 #include "../core/slang-memory-arena.h"
+#include "../core/slang-timers.h"
 #include <type_traits>
 
 namespace Slang
@@ -6583,6 +6584,7 @@ SlangResult emitSPIRVFromIR(
     const List<IRFunc*>&    irEntryPoints,
     List<uint8_t>&          spirvOut)
 {
+    __scoped_timer()
     spirvOut.clear();
 
     auto sink = codeGenContext->getSink();
