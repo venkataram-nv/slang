@@ -10,6 +10,7 @@
 #include "../core/slang-string-slice-pool.h"
 
 #include "../core/slang-io.h"
+#include "../core/slang-timers.h"
 #include "../core/slang-shared-library.h"
 #include "../core/slang-semantic-version.h"
 #include "../core/slang-char-util.h"
@@ -373,6 +374,7 @@ static SlangResult _handleOperationResult(IDxcOperationResult* dxcResult, IArtif
 
 SlangResult DXCDownstreamCompiler::compile(const CompileOptions& inOptions, IArtifact** outArtifact)
 {
+    __scoped_timer()
     if (!isVersionCompatible(inOptions)) 
     {
         // Not possible to compile with this version of the interface.

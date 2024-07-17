@@ -35,7 +35,7 @@ struct PlainScopedTimer : ScopedTimer
     ~PlainScopedTimer()
     {
         double t = time();
-        printf("%50s: %.6fs\n", section.c_str(), t);
+        printf("%50s # %.6fs\n", section.c_str(), t);
     }
 };
 
@@ -61,7 +61,7 @@ struct TreeScopedTimer : ScopedTimer
     }
 };
 
-using ActiveTimer = TreeScopedTimer;
+using ActiveTimer = PlainScopedTimer;
 #define __scoped_timer() ActiveTimer _timer(__FUNCTION__);
 #define __scoped_timer_section(s) ActiveTimer _timer(#s);
 

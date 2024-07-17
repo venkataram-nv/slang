@@ -5,6 +5,7 @@ import subprocess
 import argparse
 import halo
 import sys
+import prettytable
 
 from timeit import timeit
 
@@ -20,7 +21,7 @@ clear_mkdir('targets')
 clear_mkdir('targets/generated')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--target', type=str, default='spirv', choices=['spirv', 'dxil'])
+parser.add_argument('--target', type=str, default='spirv', choices=['spirv', 'spirv-glsl', 'dxil'])
 parser.add_argument('--samples', type=int, default=1)
 
 args = parser.parse_args(sys.argv[1:])
@@ -29,6 +30,11 @@ dxc = 'dxc.exe'
 slangc = '..\\..\\build\\Release\\bin\\slangc.exe'
 target = args.target
 samples = args.samples
+
+if target == 'spirv':
+    target = 'spirv -emit-spirv-directly'
+if target == 'spirv-glsl':
+    target = 'spirv -emit-spirv-via-glsl'
 
 print(f'slangc:  {slangc}')
 print(f'target:  {target}')
@@ -39,8 +45,8 @@ print(f'samples: {samples}\n')
 def parse(results):
     results = results.split('\n')[:-1]
     results = [ r.strip() for r in results ]
-    results = [ r.split(':') for r in results ]
-    results = { r[0] : float(r[1][:-1]) for r in results }
+    results = [ r.split('#') for r in results if len(r) > 0 ]
+    results = { r[0].strip() : float(r[1][:-1]) for r in results }
     return results
 
 timings = {}
@@ -67,18 +73,11 @@ spinner.start()
 modules = []
 for file in glob.glob('*.slang'):
     if file.startswith('hit'):
-        command = f'{slangc} {file} -stage closesthit -entry closesthit -o modules/closesthit.slang-module'
-        run(command, 'closesthit')
-
-        command = f'{slangc} {file} -stage anyhit -entry anyhit -o modules/anyhit.slang-module'
-        run(command, 'anyhit')
-
-        command = f'{slangc} {file} -stage anyhit -entry shadow -o modules/shadow.slang-module'
-        run(command, 'shadow')
+        run(f'{slangc} {file} -stage closesthit -entry closesthit -o modules/closesthit.slang-module', 'closesthit')
+        run(f'{slangc} {file} -stage anyhit -entry anyhit -o modules/anyhit.slang-module', 'anyhit')
+        run(f'{slangc} {file} -stage anyhit -entry shadow -o modules/shadow.slang-module', 'shadow')
     else:
-        command = f'{slangc} {file} -o modules/{file}-module'
-        run(command, file.split(':')[0])
-
+        run(f'{slangc} {file} -o modules/{file}-module', file.split(':')[0])
         modules.append(f'modules/{file}-module')
 
     spinner.info(f' compiled {file}.')
@@ -132,8 +131,7 @@ spinner.info(f' compiled shadow (mono).')
 
 ### DXC with original HLSL ###
 
-# TODO: check with DXIL output
-if target == 'spirv':
+if target.startswith('spirv'):
     base = '-T lib_6_1 -Vd -spirv -fspv-target-env=vulkan1.3 sdk-generated/link_unit_code.hlsl' 
     def dxc_closesthit():
         subprocess.call(f'{dxc} {base} -fspv-entrypoint-name=closesthit -Fo targets/dxr-ch-dxc.spv')
@@ -177,18 +175,18 @@ sh_source = 'targets/generated/mdl-shadow.hlsl'
 with halo.Halo(text='generating shaders...', spinner='dots') as spinner:
     base = f'{slangc} -target hlsl hit.slang'
 
-    subprocess.call(f'{base} -stage closesthit -entry closesthit -o {ch_source}')
+    subprocess.check_output(f'{base} -stage closesthit -entry closesthit -o {ch_source}')
     spinner.info('generated shader for closesthit')
     spinner.start()
     
-    subprocess.call(f'{base} -stage anyhit -entry anyhit -o {ah_source}')
+    subprocess.check_output(f'{base} -stage anyhit -entry anyhit -o {ah_source}')
     spinner.info('generated shader for anyhit')
     spinner.start()
     
-    subprocess.call(f'{base} -stage anyhit -entry shadow -o {sh_source}')
+    subprocess.check_output(f'{base} -stage anyhit -entry shadow -o {sh_source}')
     spinner.info('generated shader for shadow')
 
-if target == 'spirv':
+if target.startswith('spirv'):
     base = '-T lib_6_1 -Vd -spirv -fspv-target-env=vulkan1.3'
     def dxc_closesthit():
         subprocess.call(f'{dxc} {base} {ch_source} -fspv-entrypoint-name=closesthit -Fo targets/dxr-ch-dxc.spv')
@@ -225,70 +223,129 @@ with halo.Halo(text='compiling with dxc...', spinner='dots') as spinner:
 
 ### Timings ####
 
-print('\nresults:')
+dwn_headers = [ 'Link & Optimize', 'Semantic Checking' ]
+dwn_keys = [ 'Slang::linkAndOptimizeIR', 'SemanticChecking' ]
 
-module_precompilation = 0
-for k, db in timings.items():
-    module_precompilation += db['spCompile']
+if target.endswith('-emit-spirv-directly'):
+    dwn_headers.append('Emit Spirv')
+    dwn_keys.append('Slang::emitSPIRVFromIR')
+    
+    dwn_headers.append('Spirv-Opt')
+    dwn_keys.append('SpirvOpt')
+elif target.endswith('-emit-spirv-via-glsl'):
+    dwn_headers.append('Glslang')
+    dwn_keys.append('Slang::GlslangDownstreamCompiler::compile')
+else:
+    dwn_headers.append('DXC Downstream')
+    dwn_keys.append('Slang::DXCDownstreamCompiler::compile')
 
-print(f'\n    module precompilation    {module_precompilation:.3f}s')
+def info_module_compilation():
+    module_precompilation = 0
+    for k, db in timings.items():
+        module_precompilation += db['spCompile']
 
-ch_module = timings['$closesthit-module']['spCompile']
-ah_module = timings['$anyhit-module']['spCompile']
-sh_module = timings['$shadow-module']['spCompile']
-total_module = ch_module + ah_module + sh_module
+    print()
+    print(f'**Module precompilation ({module_precompilation:.3f}s)**')
 
-print(f'\n    module whole compilation {total_module:.3f}s')
-print(f'        closeshit {ch_module:.3f}s')
-print(f'        anyhit    {ah_module:.3f}s')
-print(f'        shadow    {sh_module:.3f}s')
+def info_module_whole_compilation():
+    ch_module = timings['$closesthit-module']['spCompile']
+    ah_module = timings['$anyhit-module']['spCompile']
+    sh_module = timings['$shadow-module']['spCompile']
+    total_module = ch_module + ah_module + sh_module
+    
+    print()
+    print(f'**Module whole compilation ({total_module:.3f}s)**')
 
-ch_mono = timings['$closesthit-mono']['spCompile']
-ah_mono = timings['$anyhit-mono']['spCompile']
-sh_mono = timings['$shadow-mono']['spCompile']
-total_mono = ch_mono + ah_mono + sh_mono
+    table = prettytable.PrettyTable()
+    table.set_style(prettytable.MARKDOWN)
+    table.field_names = [ 'Entry', 'Total' ] + dwn_headers
+    
+    entries = [ 'Closest Hit', 'Any Hit', 'Shadow' ]
+    prefixes = [ '$closesthit', '$anyhit', '$shadow' ]
 
-print(f'\n    monolithic compilation   {total_mono:.3f}s')
-print(f'        closeshit {ch_mono:.3f}s')
-print(f'        anyhit    {ah_mono:.3f}s')
-print(f'        shadow    {sh_mono:.3f}s')
+    for entry, prefix in zip(entries, prefixes):
+        row = [ entry ]
+        key = prefix + '-module'
+        db = timings[key]
 
-ch_factor = ch_mono/ch_module
-ah_factor = ah_mono/ah_module
-sh_factor = sh_mono/sh_module
-total_factor = total_mono/total_module
+        spCompile = db['spCompile']
+        row.append(f'{spCompile:.3f}s')
 
-print(f'\n    speed up (vs mono)       {total_factor:.2f}x')
-print(f'        closeshit {ch_factor:.2f}x')
-print(f'        anyhit    {ah_factor:.2f}x')
-print(f'        shadow    {sh_factor:.2f}x')
+        for key in dwn_keys:
+            time = db[key]
+            frac = 100 * time/spCompile
+            row.append(f'{time:.3f}s *({frac:.1f}%)*')
+        
+        table.add_row(row)
 
-print(f'\n    dxc for original hlsl    {total_dxc:.3f}s')
-print(f'        closeshit {ch_dxc:.3f}s')
-print(f'        anyhit    {ah_dxc:.3f}s')
-print(f'        shadow    {sh_dxc:.3f}s')
+    print(table)
+    
+    return ch_module, ah_module, sh_module, total_module
 
-ch_factor = ch_dxc/ch_module
-ah_factor = ah_dxc/ah_module
-sh_factor = sh_dxc/sh_module
-total_factor = total_dxc/total_module
+def info_monolithic_compilation():
+    ch_mono = timings['$closesthit-mono']['spCompile']
+    ah_mono = timings['$anyhit-mono']['spCompile']
+    sh_mono = timings['$shadow-mono']['spCompile']
+    total_mono = ch_mono + ah_mono + sh_mono
 
-print(f'\n    speed up (vs dxc)        {total_factor:.2f}x')
-print(f'        closeshit {ch_factor:.2f}x')
-print(f'        anyhit    {ah_factor:.2f}x')
-print(f'        shadow    {sh_factor:.2f}x')
+    print()
+    print(f'**Monolithic compilation ({total_mono:.3f}s)**')
+    
+    table = prettytable.PrettyTable()
+    table.set_style(prettytable.MARKDOWN)
+    table.field_names = [ 'Entry', 'Total' ] + dwn_headers
+    
+    entries = [ 'Closest Hit', 'Any Hit', 'Shadow' ]
+    prefixes = [ '$closesthit', '$anyhit', '$shadow' ]
 
-print(f'\n    dxc for generated hlsl   {total_dxc_gen:.3f}s')
-print(f'        closeshit {ch_dxc_gen:.3f}s')
-print(f'        anyhit    {ah_dxc_gen:.3f}s')
-print(f'        shadow    {sh_dxc_gen:.3f}s')
+    for entry, prefix in zip(entries, prefixes):
+        row = [ entry ]
+        key = prefix + '-mono'
+        db = timings[key]
 
-ch_factor = ch_dxc_gen/ch_module
-ah_factor = ah_dxc_gen/ah_module
-sh_factor = sh_dxc_gen/sh_module
-total_factor = total_dxc_gen/total_module
+        spCompile = db['spCompile']
+        row.append(f'{spCompile:.3f}s')
 
-print(f'\n    speed up (vs dxc & gen)  {total_factor:.2f}x')
-print(f'        closeshit {ch_factor:.2f}x')
-print(f'        anyhit    {ah_factor:.2f}x')
-print(f'        shadow    {sh_factor:.2f}x')
+        for key in dwn_keys:
+            time = db[key]
+            frac = 100 * time/spCompile
+            row.append(f'{time:.3f}s *({frac:.1f}%)*')
+        
+        table.add_row(row)
+
+    print(table)
+
+    return ch_mono, ah_mono, sh_mono, total_mono
+
+def info_dxc_compilation():
+    print()
+    print(f'**DXC for original HLSL ({total_dxc:.3f}s)**')
+    
+    table = prettytable.PrettyTable()
+    table.set_style(prettytable.MARKDOWN)
+    table.field_names = [ 'Entry', 'Total' ]
+    table.add_row([ 'Closest Hit', f'{ch_dxc:.3f}s' ])
+    table.add_row([ 'Any Hit', f'{ah_dxc:.3f}s' ])
+    table.add_row([ 'Shadow ', f'{sh_dxc:.3f}s' ])
+    print(table)
+    
+    return ch_dxc, ah_dxc, sh_dxc, total_dxc
+
+def info_speed_up_factors(modl, mono, dxcc):
+    print()
+    print(f'**Speed up factors**')
+
+    table = prettytable.PrettyTable()
+    table.set_style(prettytable.MARKDOWN)
+    table.field_names = [ 'Entry', 'vs. Monolithic', 'vs. DXC' ]
+    table.add_row([ 'Total', f'{mono[3]/modl[3]:.3f}x', f'{dxcc[3]/modl[3]:.3f}x' ])
+    table.add_row([ 'Closest Hit', f'{mono[0]/modl[0]:.3f}x', f'{dxcc[0]/modl[0]:.3f}x' ])
+    table.add_row([ 'Any Hit', f'{mono[1]/modl[1]:.3f}x', f'{dxcc[1]/modl[1]:.3f}x' ])
+    table.add_row([ 'Shadow', f'{mono[2]/modl[2]:.3f}x', f'{dxcc[2]/modl[2]:.3f}x' ])
+    print(table)
+
+info_module_compilation()
+modl = info_module_whole_compilation()
+mono = info_monolithic_compilation()
+dxcc = info_dxc_compilation()
+info_speed_up_factors(modl, mono, dxcc)
