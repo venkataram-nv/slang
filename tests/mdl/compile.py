@@ -143,6 +143,7 @@ if target.startswith('spirv'):
         subprocess.call(f'{dxc} {base} -fspv-entrypoint-name=shadow -Fo targets/dxr-sh-dxc.spv')
 else:
     base = '-T lib_6_1 -Vd sdk-generated/link_unit_code.hlsl' 
+    # base = '-T lib_6_5 sdk-generated/link_unit_code.hlsl' 
     def dxc_closesthit():
         subprocess.call(f'{dxc} {base} -E closesthit -Fo targets/dxr-ch-dxc.dxil')
     
@@ -165,61 +166,6 @@ with halo.Halo(text='compiling with dxc...', spinner='dots') as spinner:
     spinner.info('compiled shadow (dxc).')
 
     total_dxc = ch_dxc + ah_dxc + sh_dxc
-
-### DXC with slangc generated HLSL ###
-
-ch_source = 'targets/generated/mdl-closesthit.hlsl'
-ah_source = 'targets/generated/mdl-anyhit.hlsl'
-sh_source = 'targets/generated/mdl-shadow.hlsl'
-
-with halo.Halo(text='generating shaders...', spinner='dots') as spinner:
-    base = f'{slangc} -target hlsl hit.slang'
-
-    subprocess.check_output(f'{base} -stage closesthit -entry closesthit -o {ch_source}')
-    spinner.info('generated shader for closesthit')
-    spinner.start()
-    
-    subprocess.check_output(f'{base} -stage anyhit -entry anyhit -o {ah_source}')
-    spinner.info('generated shader for anyhit')
-    spinner.start()
-    
-    subprocess.check_output(f'{base} -stage anyhit -entry shadow -o {sh_source}')
-    spinner.info('generated shader for shadow')
-
-if target.startswith('spirv'):
-    base = '-T lib_6_1 -Vd -spirv -fspv-target-env=vulkan1.3'
-    def dxc_closesthit():
-        subprocess.call(f'{dxc} {base} {ch_source} -fspv-entrypoint-name=closesthit -Fo targets/dxr-ch-dxc.spv')
-
-    def dxc_anyhit():
-        subprocess.call(f'{dxc} {base} {ah_source} -fspv-entrypoint-name=anyhit -Fo targets/dxr-ah-dxc.spv')
-
-    def dxc_shadow():
-        subprocess.call(f'{dxc} {base} {sh_source} -fspv-entrypoint-name=shadow -Fo targets/dxr-sh-dxc.spv')
-else:
-    base = '-T lib_6_1 -Vd'
-    def dxc_closesthit():
-        subprocess.call(f'{dxc} {base} {ch_source} -E closesthit -Fo targets/dxr-ch-dxc.spv')
-
-    def dxc_anyhit():
-        subprocess.call(f'{dxc} {base} {ah_source} -E anyhit -Fo targets/dxr-ah-dxc.spv')
-
-    def dxc_shadow():
-        subprocess.call(f'{dxc} {base} {sh_source} -E shadow -Fo targets/dxr-sh-dxc.spv')
-
-with halo.Halo(text='compiling with dxc...', spinner='dots') as spinner:
-    ch_dxc_gen = timeit(dxc_closesthit, number=samples) / samples
-    spinner.info('compiled closeshit (dxc & gen).')
-    spinner.start()
-
-    ah_dxc_gen = timeit(dxc_anyhit, number=samples) / samples
-    spinner.info('compiled anyhit (dxc & gen).')
-    spinner.start()
-
-    sh_dxc_gen = timeit(dxc_shadow, number=samples) / samples
-    spinner.info('compiled shadow (dxc & gen).')
-
-    total_dxc_gen = ch_dxc_gen + ah_dxc_gen + sh_dxc_gen
 
 ### Timings ####
 
