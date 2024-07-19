@@ -100,34 +100,34 @@ public struct Bsdf_pdf_data {
 /// Input and output structure for EDF sampling data.
 public struct Edf_sample_data
 {
-    float4 xi;                      ///< input: pseudo-random sample numbers in range [0, 1)
-    float3 k1;                      ///< output: outgoing direction
-    float pdf;                      ///< output: pdf (non-projected hemisphere)
-    float3 edf_over_pdf;            ///< output: edf * dot(normal,k1) / pdf
-    Edf_event_type event_type;      ///< output: the type of event for the generated sample
-    int handle;                     ///< output: handle of the sampled elemental EDF (lobe)
+    public float4 xi;                 ///< input: pseudo-random sample numbers in range [0, 1)
+    public float3 k1;                 ///< output: outgoing direction
+    public float pdf;                 ///< output: pdf (non-projected hemisphere)
+    public float3 edf_over_pdf;       ///< output: edf * dot(normal,k1) / pdf
+    public Edf_event_type event_type; ///< output: the type of event for the generated sample
+    public int handle;                ///< output: handle of the sampled elemental EDF (lobe)
 };
 
 /// Input and output structure for EDF evaluation data.
 public struct Edf_evaluate_data
 {
-    float3 k1;                      ///< input: outgoing direction
-    int handle_offset;
-    float cos;                      ///< output: dot(normal, k1)
-    float3 edf;                     ///< output: edf
-    float pdf;                      ///< output: pdf (non-projected hemisphere)
+    public float3 k1; ///< input: outgoing direction
+    public int handle_offset;
+    public float cos;  ///< output: dot(normal, k1)
+    public float3 edf; ///< output: edf
+    public float pdf;  ///< output: pdf (non-projected hemisphere)
 };
 
 /// Input and output structure for EDF PDF calculation data.
 public struct Edf_pdf_data
 {
-    float3 k1;                      ///< input: outgoing direction
-    float pdf;                      ///< output: pdf (non-projected hemisphere)
+    public float3 k1; ///< input: outgoing direction
+    public float pdf; ///< output: pdf (non-projected hemisphere)
 };
 
 /// Input and output structure for EDF PDF calculation data.
 public struct Edf_auxiliary_data
 {
-    float3 k1;                      ///< input: outgoing direction
-    int handle_offset;
+    public float3 k1; ///< input: outgoing direction
+    public int handle_offset;
 };

@@ -1,6 +1,8 @@
 module shading;
 
-static const int MDL_NUM_TEXTURE_RESULTS = 16;
+import types;
+
+static const int MDL_NUM_TEXTURE_RESULTS = 32;
 
 // renderer state object that is passed to mdl runtime functions
 public struct DXRRendererState
@@ -37,7 +39,7 @@ public struct Shading_state_material
 
     /// The result of state::position().
     /// It represents the position where the material should be evaluated.
-    public float3            position;
+    public Derived_float3    position;
 
     /// The result of state::animation_time().
     /// It represents the time of the current sample in seconds.
@@ -46,7 +48,7 @@ public struct Shading_state_material
     /// An array containing the results of state::texture_coordinate(i).
     /// The i-th entry represents the texture coordinates of the i-th texture space at the
     /// current position.
-    public float3            text_coords[1];
+    public Derived_float3    text_coords[1];
 
     /// An array containing the results of state::texture_tangent_u(i).
     /// The i-th entry represents the texture tangent vector of the i-th texture space at the

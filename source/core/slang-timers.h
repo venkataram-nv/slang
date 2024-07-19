@@ -63,6 +63,6 @@ struct TreeScopedTimer : ScopedTimer
 
 using ActiveTimer = PlainScopedTimer;
 #define __scoped_timer() ActiveTimer _timer(__FUNCTION__);
-#define __scoped_timer_section(s) ActiveTimer _timer(#s);
+#define __scoped_timer_section(s) ActiveTimer _timer##s(#s);
 
 #endif

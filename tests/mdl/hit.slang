@@ -42,6 +42,7 @@ import shading;
 #define MDL_HAS_BACKFACE_EMISSION 0
 #define MDL_HAS_VOLUME_ABSORPTION 0
 #define MDL_CAN_BE_THIN_WALLED 0
+#define USE_DERIVS 1
 
 // #define MDL_NUM_TEXTURE_RESULTS 16
 
@@ -256,11 +257,11 @@ void setup_mdl_shading_state(out Shading_state_material mdl_state, Attributes at
     mdl_state.geom_normal = world_geom_normal;
     // #if defined(USE_DERIVS)
     //     // currently not supported
-    //     mdl_state.position.val = hit_position;
-    //     mdl_state.position.dx = float3(0, 0, 0);
-    //     mdl_state.position.dy = float3(0, 0, 0);
+    mdl_state.position.val = hit_position;
+    mdl_state.position.dx = float3(0, 0, 0);
+    mdl_state.position.dy = float3(0, 0, 0);
     // #else
-    mdl_state.position = hit_position;
+    //mdl_state.position = hit_position;
     // #endif
     mdl_state.animation_time = bool(enable_animiation) ? total_time : 0.0f;
     mdl_state.tangent_u[0] = world_tangent;
@@ -302,11 +303,11 @@ void setup_mdl_shading_state(out Shading_state_material mdl_state, Attributes at
 
     // #if defined(USE_DERIVS)
     //     // would make sense in a rasterizer. for a ray tracers this is not straight forward
-    //     mdl_state.text_coords[0].val = float3(texcoord0, 0);
-    //     mdl_state.text_coords[0].dx = float3(0, 0, 0); // float3(ddx(texcoord0), 0);
-    //     mdl_state.text_coords[0].dy = float3(0, 0, 0); // float3(ddy(texcoord0), 0);
+    mdl_state.text_coords[0].val = float3(texcoord0, 0);
+    mdl_state.text_coords[0].dx = float3(0, 0, 0); // float3(ddx(texcoord0), 0);
+    mdl_state.text_coords[0].dy = float3(0, 0, 0); // float3(ddy(texcoord0), 0);
     // #else
-    mdl_state.text_coords[0] = float3(texcoord0, 0);
+    //mdl_state.text_coords[0] = float3(texcoord0, 0);
     // #endif
 }
 
@@ -352,9 +353,9 @@ void closesthit(inout RadianceHitInfo payload, Attributes attrib)
     setup_mdl_shading_state(mdl_state, attrib);
 
     // pre-compute and cache data used by different generated MDL functions
-    #if (MDL_HAS_INIT == 1)
-        mdl_init(mdl_state);
-    #endif
+    //#if (MDL_HAS_INIT == 1)
+    mdl_init(mdl_state);
+    //#endif
 
     // thin-walled materials are allowed to have a different back side
     // buy the can't have volumetric properties
@@ -429,7 +430,7 @@ void closesthit(inout RadianceHitInfo payload, Attributes attrib)
 
     // Write Auxiliary Buffers
     //---------------------------------------------------------------------------------------------
-    #if defined(ENABLE_AUXILIARY)
+  //  #if defined(ENABLE_AUXILIARY)
     if (has_flag(payload.flags, uint(FLAG_FIRST_PATH_SEGMENT)))
     {
         Bsdf_auxiliary_data aux_data = (Bsdf_auxiliary_data) 0;
@@ -437,27 +438,28 @@ void closesthit(inout RadianceHitInfo payload, Attributes attrib)
         aux_data.ior2 = ior2;                    // IOR other side
         aux_data.k1 = -WorldRayDirection();      // outgoing direction
 
-        // use backface instead of surface scattering?
-        if (thin_walled && mdl_state.renderer_state.hit_backface && (MDL_HAS_BACKFACE_SCATTERING == 1))
-        {
-            #if (MDL_HAS_BACKFACE_SCATTERING == 1)
-                mdl_backface_scattering_auxiliary(aux_data, mdl_state);
-            #endif
-        }
-        else
-        {
-            #if (MDL_HAS_SURFACE_SCATTERING == 1)
-                mdl_surface_scattering_auxiliary(aux_data, mdl_state);
-            #endif
-        }
+  //      // use backface instead of surface scattering?
+  //      if (thin_walled && mdl_state.renderer_state.hit_backface && (MDL_HAS_BACKFACE_SCATTERING == 1))
+  //      {
+  //          #if (MDL_HAS_BACKFACE_SCATTERING == 1)
+  //              mdl_backface_scattering_auxiliary(aux_data, mdl_state);
+  //          #endif
+  //      }
+  //      else
+  //      {
+  //          #if (MDL_HAS_SURFACE_SCATTERING == 1)
+  //              mdl_surface_scattering_auxiliary(aux_data, mdl_state);
+  //          #endif
+  //      }
 
+        mdl_surface_scattering_auxiliary(aux_data, mdl_state);
         uint3 launch_index =  DispatchRaysIndex();
 		AlbedoDiffuseBuffer[launch_index.xy] = float4(aux_data.albedo_diffuse, 1.0f);
 		AlbedoGlossyBuffer[launch_index.xy] = float4(aux_data.albedo_glossy, 1.0f);
 		NormalBuffer[launch_index.xy] = float4(aux_data.normal, 1.0f);
 		RoughnessBuffer[launch_index.xy] = float4(aux_data.roughness.xy, 0.0f, 1.0f);
     }
-    #endif
+  //  #endif
 
     // Sample Light Sources for next event estimation
     //---------------------------------------------------------------------------------------------
@@ -523,19 +525,21 @@ void closesthit(inout RadianceHitInfo payload, Attributes attrib)
     sample_data.k1 = -WorldRayDirection();      // outgoing direction
     sample_data.xi = rnd4(payload.seed);        // random sample number
 
-    // use backface instead of surface scattering?
-    if (thin_walled && mdl_state.renderer_state.hit_backface && (MDL_HAS_BACKFACE_SCATTERING == 1))
-    {
-        #if (MDL_HAS_BACKFACE_SCATTERING == 1)
-            mdl_backface_scattering_sample(sample_data, mdl_state);
-        #endif
-    }
-    else
-    {
-        #if (MDL_HAS_SURFACE_SCATTERING == 1)
-            mdl_surface_scattering_sample(sample_data, mdl_state);
-        #endif
-    }
+    //// use backface instead of surface scattering?
+    //if (thin_walled && mdl_state.renderer_state.hit_backface && (MDL_HAS_BACKFACE_SCATTERING == 1))
+    //{
+    //    #if (MDL_HAS_BACKFACE_SCATTERING == 1)
+    //        mdl_backface_scattering_sample(sample_data, mdl_state);
+    //    #endif
+    //}
+    //else
+    //{
+    //    #if (MDL_HAS_SURFACE_SCATTERING == 1)
+    //        mdl_surface_scattering_sample(sample_data, mdl_state);
+    //    #endif
+    //}
+
+    mdl_surface_scattering_sample(sample_data, mdl_state);
 
     // stop on absorb
     if (sample_data.event_type == BSDF_EVENT_ABSORB)
@@ -553,20 +557,20 @@ void closesthit(inout RadianceHitInfo payload, Attributes attrib)
         {
             toggle_flag(payload.flags, uint(FLAG_INSIDE));
             // continue on the opposite side
-            #if defined(USE_DERIVS)
-                payload.ray_origin_next = offset_ray(mdl_state.position.val, -mdl_state.geom_normal);
-            #else
-                payload.ray_origin_next = offset_ray(mdl_state.position, -mdl_state.geom_normal);
-            #endif
+            //#if defined(USE_DERIVS)
+            payload.ray_origin_next = offset_ray(mdl_state.position.val, -mdl_state.geom_normal);
+            //#else
+            //    payload.ray_origin_next = offset_ray(mdl_state.position, -mdl_state.geom_normal);
+            //#endif
         }
         else
         {
             // continue on the current side
-            #if defined(USE_DERIVS)
-                payload.ray_origin_next = offset_ray(mdl_state.position.val, mdl_state.geom_normal);
-            #else
-                payload.ray_origin_next = offset_ray(mdl_state.position, mdl_state.geom_normal);
-            #endif
+            //#if defined(USE_DERIVS)
+            payload.ray_origin_next = offset_ray(mdl_state.position.val, mdl_state.geom_normal);
+            //#else
+                //payload.ray_origin_next = offset_ray(mdl_state.position, mdl_state.geom_normal);
+            //#endif
         }
 
         if ((sample_data.event_type & BSDF_EVENT_SPECULAR) != 0)
@@ -580,11 +584,11 @@ void closesthit(inout RadianceHitInfo payload, Attributes attrib)
 
     // cast a shadow ray; assuming light is always outside
     RayDesc ray;
-    #if defined(USE_DERIVS)
-        ray.Origin = offset_ray(mdl_state.position.val, mdl_state.geom_normal * (inside ? -1.0f : 1.0f));
-    #else
-        ray.Origin = offset_ray(mdl_state.position, mdl_state.geom_normal * (inside ? -1.0f : 1.0f));
-    #endif
+    // #if defined(USE_DERIVS)
+    ray.Origin = offset_ray(mdl_state.position.val, mdl_state.geom_normal * (inside ? -1.0f : 1.0f));
+    //#else
+    //    ray.Origin = offset_ray(mdl_state.position, mdl_state.geom_normal * (inside ? -1.0f : 1.0f));
+    //#endif
     ray.Direction = to_light;
     ray.TMin = 0.0f;
     ray.TMax = far_plane_distance;
@@ -595,15 +599,14 @@ void closesthit(inout RadianceHitInfo payload, Attributes attrib)
     shadow_payload.isHit = false;
     shadow_payload.seed = payload.seed;
 
-    TraceRay(
-        SceneBVH,               // AccelerationStructure
-        uint(RAY_FLAG_NONE),          // RayFlags
-        0xFF /* allow all */,   // InstanceInclusionMask
-        RayType.RAY_TYPE_SHADOW,        // RayContributionToHitGroupIndex
-        RayType.RAY_TYPE_COUNT,         // MultiplierForGeometryContributionToHitGroupIndex
-        RayType.RAY_TYPE_SHADOW,        // MissShaderIndex
-        ray,
-        shadow_payload);
+    TraceRay(SceneBVH,                // AccelerationStructure
+             uint(RAY_FLAG_NONE),     // RayFlags
+             0xFF /* allow all */,    // InstanceInclusionMask
+             RayType.RAY_TYPE_SHADOW, // RayContributionToHitGroupIndex
+             RayType.RAY_TYPE_COUNT,  // MultiplierForGeometryContributionToHitGroupIndex
+             RayType.RAY_TYPE_SHADOW, // MissShaderIndex
+             ray,
+             shadow_payload);
 
     // add to ray contribution from next event estimation
     if (!shadow_payload.isHit)
