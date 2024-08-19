@@ -3,21 +3,31 @@ import shutil
 import glob
 import subprocess
 import argparse
-import halo
 import sys
 import prettytable
-import json
 
 ### Setup ###
 
 def clear_mkdir(dir):
     if os.path.exists(dir):
         shutil.rmtree(dir)
+
     os.makedirs(dir, exist_ok=True)
 
-clear_mkdir('modules')
 clear_mkdir('targets')
-clear_mkdir('targets/generated')
+clear_mkdir('modules')
+
+for file in glob.glob(f'*.slang-module'):
+    os.remove(file)
+
+repo = 'slang-benchmarks'
+if not os.path.exists(repo):
+    repo = 'ssh://git@gitlab-master.nvidia.com:12051/slang/slang-benchmarks.git'
+    command = f'git clone {repo}'
+    subprocess.check_output(command)
+    os.system('cp slang-benchmarks/mdl/* .')
+
+### Script arguments ####
 
 target_choices = ['spirv', 'spirv-glsl', 'dxil', 'dxil-embedded']
 
@@ -29,17 +39,9 @@ parser.add_argument('--ci', action='store_true')
 
 args = parser.parse_args(sys.argv[1:])
 
-repo = 'slang-benchmarks'
-if args.ci:
-    repo = 'C:\\slang-benchmarks'
-
-if not os.path.exists(repo):
-    repo = 'ssh://git@gitlab-master.nvidia.com:12051/slang/slang-benchmarks.git'
-    command = f'git clone {repo}'
-    subprocess.check_output(command)
-
 dxc = 'dxc.exe'
-slangc = '..\\..\\build\\Release\\bin\\slangc.exe'
+# slangc = '..\\..\\build\\Release\\bin\\slangc.exe'
+slangc = '..\\..\\build\\Debug\\bin\\slangc.exe'
 target = args.target
 samples = args.samples
 
@@ -80,9 +82,10 @@ def run(command, key):
         try:
             results = subprocess.check_output(command, stderr=subprocess.STDOUT, shell=True).decode('utf-8')
         except subprocess.CalledProcessError as exc:
+            print(f'Error occurred when running the command: {command}')
             print(exc.output.decode('utf-8'))
-            return
-            # exit(-1)
+            # return
+            exit(-1)
 
         p = parse(results)
         if len(profile) == 0:
@@ -119,92 +122,51 @@ def compile_cmd(file, output, stage=None, entry=None, emit=False):
 
     return cmd
 
-### Module precompilation ###
+### Monolithic entry point compilation ###
 
-modules = []
+hit = 'hit.slang'
 
-for file in glob.glob(f'{repo}\\mdl\\*.slang'):
-    if file.endswith('hit.slang'):
-        run(compile_cmd(file, 'modules/closesthit.slang-module', stage='closesthit'), 'module/closesthit')
-        run(compile_cmd(file, 'modules/anyhit.slang-module', stage='anyhit'), 'module/anyhit')
-        run(compile_cmd(file, 'modules/shadow.slang-module', stage='anyhit', entry='shadow'), 'module/shadow')
-    else:
-        basename = os.path.basename(file)
-        run(compile_cmd(file, f'modules/{basename}-module'), 'module/' + file)
-        modules.append(f'modules/{basename}-module')
-
-    print(f'[I] compiled {file}.')
-
-### Entrypoint compilation ###
-hit = 'slang-benchmarks/mdl/hit.slang'
-files = ' '.join(modules)
-
-# Module
-cmd = compile_cmd(f'{files} modules/closesthit.slang-module', f'targets/dxr-ch-modules', stage='closesthit', emit=True)
-run(cmd, f'full/{target_ext}/module/closesthit')
-
-print(f'[I] compiled closesthit (module)')
-
-cmd = compile_cmd(f'{files} modules/anyhit.slang-module', f'targets/dxr-ah-modules', stage='anyhit', emit=True)
-run(cmd, f'full/{target_ext}/module/anyhit')
-
-print(f'[I] compiled anyhit (module)')
-
-cmd = compile_cmd(f'{files} modules/shadow.slang-module', f'targets/dxr-sh-modules', stage='anyhit', entry='shadow', emit=True)
-run(cmd, f'full/{target_ext}/module/shadow')
-
-print(f'[I] compiled shadow (module)')
-
-# Monolithic    
 cmd = compile_cmd(hit, f'targets/dxr-ch-mono', stage='closesthit', emit=True)
 run(cmd, f'full/{target_ext}/mono/closesthit')
-
 print(f'[I] compiled shadow (monolithic)')
 
 cmd = compile_cmd(hit, f'targets/dxr-ah-mono', stage='anyhit', emit=True)
 run(cmd, f'full/{target_ext}/mono/anyhit')
-
 print(f'[I] compiled shadow (monolithic)')
 
 cmd = compile_cmd(hit, f'targets/dxr-sh-mono', stage='anyhit', entry='shadow', emit=True)
 run(cmd, f'full/{target_ext}/mono/shadow')
-
 print(f'[I] compiled shadow (monolithic)')
 
-# Module precompilation time
-precompilation_time = 0
-for k in timings:
-    if k.startswith('module'):
-        precompilation_time += timings[k]['compileInner']
+### Module precompilation ###
 
-timings[f'full/{target_ext}/precompilation'] = { 'compileInner': precompilation_time }
-
-# Output to benchmark file
-json_data = []
-for k, v in timings.items():
-    if not k.startswith('full'):
+for file in glob.glob(f'*.slang'):
+    if file.endswith('hit.slang'):
         continue
 
-    name = k.split('/')[1:]
-    name = ' : '.join(reversed(name))
+    print(f'[I] attempting to compile {file}.')
+    basename = os.path.basename(file)
+    run(compile_cmd(file, f'{basename}-module'), 'module/' + file)
+    print(f'[I] compiled {file}.')
 
-    data = {
-        'name': name,
-        'unit': 'milliseconds',
-        'value': v['compileInner']
-    }
+### Module entry point compilation ###
 
-    json_data.append(data)
+cmd = compile_cmd(hit, f'targets/dxr-ch-modules', stage='closesthit', emit=True)
+run(cmd, f'full/{target_ext}/module/closesthit')
+print(f'[I] compiled closesthit (module)')
 
-# TODO: append target to benchmark file name
-with open(args.output, 'w') as file:
-    json.dump(json_data, file, indent=4)
+cmd = compile_cmd(hit, f'targets/dxr-ah-modules', stage='anyhit', emit=True)
+run(cmd, f'full/{target_ext}/module/anyhit')
+print(f'[I] compiled anyhit (module)')
 
-# Generate readable Markdown as well
+cmd = compile_cmd(hit, f'targets/dxr-sh-modules', stage='anyhit', entry='shadow', emit=True)
+run(cmd, f'full/{target_ext}/module/shadow')
+print(f'[I] compiled shadow (module)')
+
+### Generate readable Markdown ###
+
 print(4 * '\n')
 print('# Slang MDL benchmark results\n')
-print('## Module precompilation time\n')
-print(f'Total: **{timings[f'full/{target_ext}/precompilation']['compileInner']} ms**\n')
 
 print('## Module compilation for entry points\n')
 
