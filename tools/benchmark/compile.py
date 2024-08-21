@@ -40,8 +40,8 @@ parser.add_argument('--ci', action='store_true')
 args = parser.parse_args(sys.argv[1:])
 
 dxc = 'dxc.exe'
-# slangc = '..\\..\\build\\Release\\bin\\slangc.exe'
-slangc = '..\\..\\build\\Debug\\bin\\slangc.exe'
+slangc = '..\\..\\build\\Release\\bin\\slangc.exe'
+# slangc = '..\\..\\build\\Debug\\bin\\slangc.exe'
 target = args.target
 samples = args.samples
 
@@ -77,6 +77,8 @@ def parse(results):
 
 timings = {}
 def run(command, key):
+    print(f'cmd: {command}')
+
     profile = {}
     for i in range(samples):
         try:
@@ -144,7 +146,6 @@ for file in glob.glob(f'*.slang'):
     if file.endswith('hit.slang'):
         continue
 
-    print(f'[I] attempting to compile {file}.')
     basename = os.path.basename(file)
     run(compile_cmd(file, f'{basename}-module'), 'module/' + file)
     print(f'[I] compiled {file}.')
@@ -163,10 +164,22 @@ cmd = compile_cmd(hit, f'targets/dxr-sh-modules', stage='anyhit', entry='shadow'
 run(cmd, f'full/{target_ext}/module/shadow')
 print(f'[I] compiled shadow (module)')
 
+### Module precompilation time ###
+
+precompilation_time = 0
+for k in timings:
+    if k.startswith('module'):
+        precompilation_time += timings[k]['compileInner']
+
+timings[f'full/{target_ext}/precompilation'] = { 'compileInner': precompilation_time }
+
 ### Generate readable Markdown ###
 
 print(4 * '\n')
 print('# Slang MDL benchmark results\n')
+
+print('## Module precompilation time\n')
+print(f'Total: **{timings[f'full/{target_ext}/precompilation']['compileInner']} ms**\n')
 
 print('## Module compilation for entry points\n')
 
