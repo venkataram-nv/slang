@@ -41,7 +41,6 @@ args = parser.parse_args(sys.argv[1:])
 
 dxc = 'dxc.exe'
 slangc = '..\\..\\build\\Release\\bin\\slangc.exe'
-# slangc = '..\\..\\build\\Debug\\bin\\slangc.exe'
 target = args.target
 samples = args.samples
 
@@ -54,7 +53,7 @@ elif target == 'spirv-glsl':
     target_ext = 'spirv'
     embed = False
 elif target == 'dxil-embedded':
-    target_ext = 'dxil'
+    target_ext = 'dxil -profile lib_6_6 '
     embed = True
 elif target == 'dxil':
     target_ext = 'dxil'
@@ -117,8 +116,8 @@ def compile_cmd(file, output, stage=None, entry=None, emit=False):
         output += '.' + target_ext
     elif embed:
         cmd += ' -embed-dxil'
-        cmd += ' -profile lib_6_6'
-        cmd += ' -incomplete-library'
+        # cmd += ' -profile lib_6_6'
+        # cmd += ' -incomplete-library'
 
     cmd += f' -o {output}'
 
