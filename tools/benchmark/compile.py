@@ -20,13 +20,6 @@ clear_mkdir('modules')
 for file in glob.glob(f'*.slang-module'):
     os.remove(file)
 
-repo = 'slang-benchmarks'
-if not os.path.exists(repo):
-    repo = 'ssh://git@gitlab-master.nvidia.com:12051/slang/slang-benchmarks.git'
-    command = f'git clone {repo}'
-    subprocess.check_output(command)
-    os.system('cp slang-benchmarks/mdl/* .')
-
 ### Script arguments ####
 
 target_choices = ['spirv', 'spirv-glsl', 'dxil', 'dxil-embedded']
