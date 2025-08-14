@@ -122,7 +122,20 @@ IRFunc* specializeDispatchFunction(
         }
 
         auto callee = findWitnessTableEntry(witnessTable, requirementKey);
-        SLANG_ASSERT(callee);
+        if (!callee)
+        {
+            // This can happen when an extern struct declares conformance to an interface
+            // but doesn't provide any implementation. Report a proper error instead of asserting.
+            sharedContext->sink->diagnose(
+                witnessTable->getConcreteType(),
+                Diagnostics::typeCannotBeUsedInDynamicDispatch,
+                witnessTable->getConcreteType());
+            
+            // Clean up the partially constructed dispatch function to avoid leaving
+            // corrupted IR that could cause segfaults in later passes.
+            newDispatchFunc->removeAndDeallocate();
+            return nullptr;
+        }
         auto specializedCallInst = builder->emitCallInst(callInst->getFullType(), callee, params);
         if (callInst->getDataType()->getOp() == kIROp_VoidType)
             builder->emitReturn();
@@ -310,6 +323,11 @@ void specializeDispatchFunctions(SharedGenericsLoweringContext* sharedContext)
         // Generate a specialized `switch` statement based dispatch func,
         // from the witness tables present in the module.
         auto newDispatchFunc = specializeDispatchFunction(sharedContext, dispatchFunc);
+        
+        // If specialization failed (e.g., due to missing witness table entries),
+        // skip the fixup step.
+        if (!newDispatchFunc)
+            continue;
 
         // Fix up the call sites of newDispatchFunc to pass in sequential IDs instead of
         // witness table objects.
